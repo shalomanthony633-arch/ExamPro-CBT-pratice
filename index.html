@@ -167,9 +167,7 @@ body{font-family:'DM Sans','Segoe UI',sans-serif;background:#060818;min-height:1
 .tw-btn:hover{background:linear-gradient(135deg,#38bdf8,#0ea5e9);transform:translateY(-1px)}
 
 /* ═══ INSTALL BANNER ═══ */
-#install-banner{display:none;position:fixed;bottom:90px;left:16px;right:16px;z-index:500;background:rgba(255,255,255,0.07);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.15);border-radius:16px;padding:14px 16px;align-items:center;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,0.3)}
-#install-banner span{font-size:28px}
-#install-banner button{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif}
+/* styles handled inline on the element inside #app */
 
 /* ═══ APP ═══ */
 #app{min-height:100vh;position:relative;z-index:1;display:none;background:transparent}
@@ -466,7 +464,7 @@ input.field:focus,textarea.field:focus{border-color:rgba(255,255,255,0.5);backgr
   <span style="font-size:28px">🎯</span>
   <div style="flex:1"><div style="font-size:13px;font-weight:700;color:#fff">Install ExamPro</div><div style="font-size:11px;color:rgba(255,255,255,0.5)">Add to home screen</div></div>
   <button onclick="installApp()" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);color:#fff;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">Install</button>
-  <button onclick="document.getElementById('install-banner').style.display='none'" style="background:none;border:none;color:rgba(255,255,255,0.4);cursor:pointer;font-size:18px;padding:4px">×</button>
+  <button onclick="document.getElementById('install-banner').style.display='none'" aria-label="Dismiss" style="background:none;border:none;color:rgba(255,255,255,0.4);cursor:pointer;font-size:18px;padding:4px">×</button>
 </div>
 
 <!-- DM Overlay -->
@@ -474,12 +472,12 @@ input.field:focus,textarea.field:focus{border-color:rgba(255,255,255,0.5);backgr
   <div class="dm-box">
     <div class="dm-header">
       <div class="dm-title" id="dm-title">Private Message</div>
-      <button class="dm-close" onclick="closeDM()">×</button>
+      <button class="dm-close" aria-label="Close" onclick="closeDM()">×</button>
     </div>
     <div class="dm-msgs" id="dm-msgs"></div>
     <div style="display:flex;gap:8px">
       <input type="text" id="dm-input" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Type a message..." style="flex:1;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);border-radius:10px;padding:12px 14px;color:#fff;font-size:16px;outline:none;min-width:0;-webkit-appearance:none" onkeydown="if(event.key==='Enter'){event.preventDefault();sendDM()}">
-      <button onclick="sendDM()" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:10px;width:46px;height:46px;font-size:20px;cursor:pointer;color:#fff;flex-shrink:0">✈</button>
+      <button onclick="sendDM()" aria-label="Send message" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:10px;width:46px;height:46px;font-size:20px;cursor:pointer;color:#fff;flex-shrink:0">✈</button>
     </div>
   </div>
 </div>
@@ -516,7 +514,7 @@ input.field:focus,textarea.field:focus{border-color:rgba(255,255,255,0.5);backgr
   <div class="nav-inner">
     <button class="nav-item active" onclick="navTo('home')" id="nav-home"><span class="nav-icon">🏠</span><span class="nav-label">Home</span></button>
     <button class="nav-item" onclick="navTo('board')" id="nav-board"><span class="nav-icon">🏆</span><span class="nav-label">Board</span></button>
-    <button class="nav-item" onclick="navTo('chat')" id="nav-chat"><span class="nav-icon">💬</span><span class="nav-label">Chat</span><span class="nav-badge" id="chat-badge">0</span></button>
+    <button class="nav-item" onclick="navTo('chat')" id="nav-chat"><span class="nav-icon">💬</span><span class="nav-label">Chat</span><span class="nav-badge" id="chat-badge"></span></button>
     <button class="nav-item" onclick="navTo('more')" id="nav-more"><span class="nav-icon">📐</span><span class="nav-label">More</span></button>
   </div>
 </div>
@@ -881,8 +879,8 @@ function openSubject(idx){
   subjIdx=idx;const s=LIVE_BANK[idx];
   if(!s||!s.questions.length){toast('Course not available');return;}
   const total=s.questions.length;
-  const countOptions=[10,20,30,40,50,60,80,100,150,200,300].filter(n=>n<=total).map(n=>`<button class="btn btn-ghost" style="flex:1;min-width:52px;padding:10px 6px;font-size:13px" onclick="setCount(${n})">${n}</button>`).join('');
-  const allBtn=`<button class="btn btn-ghost" style="flex:1;min-width:52px;padding:10px 6px;font-size:13px" onclick="setCount(${total})">All<br><span style="font-size:10px;opacity:0.6">${total}</span></button>`;
+  const countOptions=[10,20,30,40,50,60,80,100,150,200,300].filter(n=>n<=total).map(n=>`<button class="btn btn-ghost" style="flex:1;min-width:52px;padding:10px 6px;font-size:13px" onclick="setCount(${n},event)">${n}</button>`).join('');
+  const allBtn=`<button class="btn btn-ghost" style="flex:1;min-width:52px;padding:10px 6px;font-size:13px" onclick="setCount(${total},event)">All<br><span style="font-size:10px;opacity:0.6">${total}</span></button>`;
   navTo('exam');
   const pdfBtn=hasFullAccess()?`<button class="btn btn-ghost" style="width:100%;margin-bottom:14px" onclick="downloadPDF(${idx})">📄 Download as PDF</button>`:`<button class="btn btn-ghost" style="width:100%;margin-bottom:14px;opacity:0.5" onclick="toast('📄 PDF download — Semester feature')">📄 Download PDF <span style=\"font-size:10px;color:#10b981\">Semester</span></button>`;
   document.getElementById('exam-content').innerHTML=`<div class="card"><div style="display:flex;align-items:center;gap:14px;margin-bottom:20px"><span style="font-size:40px">${s.icon}</span><div><div style="font-size:20px;font-weight:800;color:#fff">${s.subject}</div><div style="font-size:12px;color:rgba(255,255,255,0.4);margin-top:2px">${total} questions available</div></div></div><div class="card-title">How many questions?</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px">${countOptions}${allBtn}</div><div id="count-selected" style="text-align:center;font-size:13px;color:rgba(255,255,255,0.4);margin-bottom:16px">Tap a number to select</div><div class="card-title">Choose Mode</div><div class="mode-grid"><div class="mode-card" id="mode-exam" onclick="startExamWithCount(${idx},false)" style="opacity:0.4;pointer-events:none"><div class="mode-icon">⏱️</div><div class="mode-name">Exam Mode</div><div class="mode-sub">Timed · Results at end</div></div><div class="mode-card" id="mode-practice" onclick="startExamWithCount(${idx},true)" style="opacity:0.4;pointer-events:none"><div class="mode-icon">📖</div><div class="mode-name">Practice</div><div class="mode-sub">No timer · Instant answer</div></div></div><button class="btn btn-ghost" id="pdf-dl-btn" style="width:100%;margin-bottom:10px">📄 Loading...</button><button class="btn btn-ghost" onclick="navTo('home')" style="width:100%">← Back</button></div>`;
@@ -891,14 +889,14 @@ function openSubject(idx){
 }
 
 let _selectedCount=0;
-function setCount(n){
+function setCount(n,evt){
   _selectedCount=n;
   const el=document.getElementById('count-selected');
   if(el)el.innerHTML=`<span style="color:#fff;font-weight:700">${n} questions selected</span> · ${Math.ceil(n*1.5)} mins estimated`;
   ['mode-exam','mode-practice'].forEach(id=>{const el=document.getElementById(id);if(el){el.style.opacity='1';el.style.pointerEvents='all';}});
   document.querySelectorAll('#exam-content .btn-ghost').forEach(b=>{b.style.background='';b.style.borderColor='';b.style.color='';});
-  event.target.closest('button').style.background='rgba(255,255,255,0.15)';
-  event.target.closest('button').style.borderColor='rgba(255,255,255,0.4)';
+  const btn=(evt&&evt.target)?evt.target.closest('button'):null;
+  if(btn){btn.style.background='rgba(255,255,255,0.15)';btn.style.borderColor='rgba(255,255,255,0.4)';}
 }
 function startExamWithCount(idx,practice){if(!_selectedCount){toast('Select number of questions first');return;}startExam(idx,practice,_selectedCount);}
 
@@ -976,13 +974,13 @@ function startChatUI(){
   chatListener=window._chatRef.limitToLast(100).on('child_added',snap=>{const m=snap.val();if(!m)return;msgs[snap.key]=m;renderMsgs();if(currentPage!=='chat'&&m.name!==myName){chatBadge++;updateChatBadge();}});
 }
 function escapeHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
-function sendChat(){const inp=document.getElementById('chat-in'),text=(inp.value||'').trim();if(!text)return;const name=localStorage.getItem('ep_name')||'Anonymous';if(!window._fbReady||!window._chatRef){toast('Chat not connected');return;}window._chatRef.push({name,text,ts:firebase.database.ServerValue.TIMESTAMP,id:'msg_'+Date.now()}).catch(()=>toast('Failed to send'));inp.value='';}
+function sendChat(){const inp=document.getElementById('chat-in'),text=(inp.value||'').trim();if(!text)return;if(text.length>500){toast('Message too long (max 500 chars)');return;}const name=localStorage.getItem('ep_name')||'Anonymous';if(!window._fbReady||!window._chatRef){toast('Chat not connected');return;}window._chatRef.push({name,text,ts:firebase.database.ServerValue.TIMESTAMP,id:'msg_'+Date.now()}).catch(()=>toast('Failed to send'));inp.value='';}
 function openDMByName(el){const name=el.getAttribute('data-uname');if(name)openDM(name);}
 function openDM(name){dmTarget=name;document.getElementById('dm-title').textContent='Message '+name;document.getElementById('dm-overlay').style.display='flex';loadDM(name);}
 function closeDM(){document.getElementById('dm-overlay').style.display='none';if(dmListener){dmListener.off();dmListener=null;}}
 function getDMPath(a,b){const names=[a,b].sort();return'dm/'+names[0].replace(/[^a-z0-9]/gi,'_')+'_'+names[1].replace(/[^a-z0-9]/gi,'_');}
 function loadDM(other){const myName=localStorage.getItem('ep_name')||'Anonymous',dmRef=window._db.ref(getDMPath(myName,other)),list=document.getElementById('dm-msgs');list.innerHTML='';if(dmListener)dmListener.off();dmListener=dmRef.limitToLast(50).on('child_added',snap=>{const m=snap.val();if(!m)return;const isMe=m.from===myName,div=document.createElement('div');div.className='chat-msg '+(isMe?'me':'');div.innerHTML='<div class="cm-body"><div class="cm-text">'+escapeHtml(m.text)+'</div></div>';list.appendChild(div);list.scrollTop=list.scrollHeight;});}
-function sendDM(){const inp=document.getElementById('dm-input'),text=(inp.value||'').trim();if(!text||!dmTarget)return;const myName=localStorage.getItem('ep_name')||'Anonymous';window._db.ref(getDMPath(myName,dmTarget)).push({from:myName,to:dmTarget,text,ts:firebase.database.ServerValue.TIMESTAMP}).catch(()=>toast('Failed to send'));inp.value='';}
+function sendDM(){const inp=document.getElementById('dm-input'),text=(inp.value||'').trim();if(!text||!dmTarget)return;if(text.length>500){toast('Message too long (max 500 chars)');return;}const myName=localStorage.getItem('ep_name')||'Anonymous';window._db.ref(getDMPath(myName,dmTarget)).push({from:myName,to:dmTarget,text,ts:firebase.database.ServerValue.TIMESTAMP}).catch(()=>toast('Failed to send'));inp.value='';}
 function updateChatBadge(){const b=document.getElementById('chat-badge');if(!b)return;if(chatBadge>0){b.textContent=chatBadge>99?'99+':chatBadge;b.classList.add('show');}else{b.classList.remove('show');}}
 function resetDMBadge(){chatBadge=0;updateChatBadge();}
 
@@ -1047,17 +1045,18 @@ function downloadPDF(idx){
       </td>
     </tr>`;
   });
-  const win=window.open('','_blank');
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${s.subject} — ExamPro</title>
+  const htmlContent=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${s.subject} — ExamPro</title>
   <style>body{font-family:Arial,sans-serif;max-width:700px;margin:0 auto;padding:20px}h1{font-size:20px;color:#111;border-bottom:3px solid #3b82f6;padding-bottom:10px}h2{font-size:13px;color:#6b7280;font-weight:400;margin-top:4px}table{width:100%;border-collapse:collapse}@media print{body{padding:0}}</style>
   </head><body>
   <h1>${s.icon} ${s.subject}</h1>
   <h2>ExamPro CBT Practice — ${s.questions.length} Questions · Generated ${new Date().toLocaleDateString('en-NG')}</h2>
   <table>${rows}</table>
   <div style="margin-top:20px;font-size:11px;color:#9ca3af;text-align:center">Built by Shant 🇳🇬 · ExamPro CBT</div>
-  </body></html>`);
-  win.document.close();
-  setTimeout(()=>{win.print();},400);
+  </body></html>`;
+  const blob=new Blob([htmlContent],{type:'text/html'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=s.subject.replace(/[^a-z0-9]/gi,'_')+'_ExamPro.html';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),2000);
+  toast('📄 PDF ready — open the downloaded file and print to PDF!');
 }
 
 // ══ TOAST ══
