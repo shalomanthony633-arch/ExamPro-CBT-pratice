@@ -18,7 +18,7 @@
   const blob=new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'});
   const ml=document.createElement('link');ml.rel='manifest';ml.href=URL.createObjectURL(blob);document.head.appendChild(ml);
   if('serviceWorker' in navigator){
-    const sw=`const CACHE='exampro-v1';const ASSETS=['./', './index.html'];self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS).catch(()=>{})));self.skipWaiting();});self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));});self.addEventListener('fetch',e=>{e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)));});`;
+    const sw=`const CACHE='exampro-v3';const ASSETS=['./', './index.html'];self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS).catch(()=>{})));self.skipWaiting();});self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));});self.addEventListener('fetch',e=>{e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)));});`;
     const swBlob=new Blob([sw],{type:'application/javascript'});
     navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(()=>{});
   }
@@ -989,7 +989,26 @@ function resetDMBadge(){chatBadge=0;updateChatBadge();}
 // ══ MORE ══
 function renderMore(){
   const mc=document.getElementById('more-content');if(!mc)return;
-  mc.innerHTML=`<div class="card"><div class="card-title">📐 Formula Sheet</div><div class="fs-section"><div class="fs-head">Economics</div><div class="fi"><div class="fi-name">Price Elasticity of Demand (PED)</div><div class="fi-eq">PED = (% Change in Qty Demanded) / (% Change in Price)</div><div class="fi-note">If |PED| > 1: Elastic. If |PED| < 1: Inelastic.</div></div><div class="fi"><div class="fi-name">Total Revenue</div><div class="fi-eq">TR = Price × Quantity</div></div></div><div class="fs-section"><div class="fs-head">Accounting</div><div class="fi"><div class="fi-name">Accounting Equation</div><div class="fi-eq">Assets = Liabilities + Owner's Equity</div></div><div class="fi"><div class="fi-name">Gross Profit</div><div class="fi-eq">Gross Profit = Sales - Cost of Goods Sold</div></div><div class="fi"><div class="fi-name">Net Profit</div><div class="fi-eq">Net Profit = Gross Profit - Expenses</div></div></div><div class="fs-section"><div class="fs-head">Mathematics</div><div class="fi"><div class="fi-name">Simple Interest</div><div class="fi-eq">I = P × R × T</div><div class="fi-note">P = Principal, R = Rate, T = Time</div></div><div class="fi"><div class="fi-name">Compound Interest</div><div class="fi-eq">A = P(1 + r/n)^(nt)</div></div></div></div><div class="card"><div class="card-title">📜 History</div><div id="hist-list"></div></div><div class="card"><div class="card-title">⚙️ Settings</div><button class="btn btn-danger" onclick="clearHistory()" style="width:100%;margin-bottom:8px">Clear History</button><button class="btn btn-ghost" onclick="payWithPaystack()" style="width:100%">💳 Pay with Paystack</button></div>`;
+  // Build PDF buttons for each subject
+  const pdfSection = LIVE_BANK.filter(s=>s.questions.length>0).map((s,i)=>{
+    const idx = LIVE_BANK.indexOf(s);
+    if(hasFullAccess()){
+      return `<div class="hi" style="cursor:pointer" onclick="downloadPDF(${idx})">
+        <div><div class="hi-s">${s.icon} ${s.subject}</div><div class="hi-d">${s.questions.length} questions · Tap to download</div></div>
+        <div style="font-size:22px">📥</div>
+      </div>`;
+    } else {
+      return `<div class="hi" style="opacity:0.5;cursor:pointer" onclick="toast('📄 PDF download is a Semester feature — upgrade to unlock!')">
+        <div><div class="hi-s">${s.icon} ${s.subject}</div><div class="hi-d">${s.questions.length} questions · Semester only</div></div>
+        <div style="font-size:18px;color:#10b981">👑</div>
+      </div>`;
+    }
+  }).join('') || '<div class="empty">No subjects loaded yet.</div>';
+
+  mc.innerHTML=`<div class="card"><div class="card-title">📄 Download PDF</div>
+    ${!hasFullAccess()?`<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:12px;color:rgba(16,185,129,0.9)">👑 Upgrade to Semester to unlock PDF downloads for all subjects</div>`:''}
+    ${pdfSection}
+  </div><div class="card"><div class="card-title">📐 Formula Sheet</div><div class="fs-section"><div class="fs-head">Economics</div><div class="fi"><div class="fi-name">Price Elasticity of Demand (PED)</div><div class="fi-eq">PED = (% Change in Qty Demanded) / (% Change in Price)</div><div class="fi-note">If |PED| > 1: Elastic. If |PED| < 1: Inelastic.</div></div><div class="fi"><div class="fi-name">Total Revenue</div><div class="fi-eq">TR = Price × Quantity</div></div></div><div class="fs-section"><div class="fs-head">Accounting</div><div class="fi"><div class="fi-name">Accounting Equation</div><div class="fi-eq">Assets = Liabilities + Owner's Equity</div></div><div class="fi"><div class="fi-name">Gross Profit</div><div class="fi-eq">Gross Profit = Sales - Cost of Goods Sold</div></div><div class="fi"><div class="fi-name">Net Profit</div><div class="fi-eq">Net Profit = Gross Profit - Expenses</div></div></div><div class="fs-section"><div class="fs-head">Mathematics</div><div class="fi"><div class="fi-name">Simple Interest</div><div class="fi-eq">I = P × R × T</div><div class="fi-note">P = Principal, R = Rate, T = Time</div></div><div class="fi"><div class="fi-name">Compound Interest</div><div class="fi-eq">A = P(1 + r/n)^(nt)</div></div></div></div><div class="card"><div class="card-title">📜 History</div><div id="hist-list"></div></div><div class="card"><div class="card-title">⚙️ Settings</div><button class="btn btn-danger" onclick="clearHistory()" style="width:100%;margin-bottom:8px">Clear History</button><button class="btn btn-ghost" onclick="payWithPaystack()" style="width:100%">💳 Pay with Paystack</button></div>`;
   renderHistory();
 }
 function renderHistory(){const hl=document.getElementById('hist-list');if(!hl)return;const hist=loadHistory().sort((a,b)=>b.ts-a.ts);hl.innerHTML=hist.length===0?'<div class="empty">No exams taken yet.</div>':hist.map(h=>`<div class="hi"><div><div class="hi-s">${h.icon} ${h.subject}</div><div class="hi-d">${h.mode} · ${h.date} · ${h.correct}/${h.total}</div></div><div class="hi-sc ${h.pct>=70?'pass':h.pct>=50?'avg':'fail'}">${h.pct}%</div></div>`).join('');}
