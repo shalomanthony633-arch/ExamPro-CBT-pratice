@@ -1,0 +1,103 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&display=swap');
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: #04060f;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+body::-webkit-scrollbar {
+  width: 0 !important;
+}
+
+input, select, textarea {
+  font-size: 16px !important;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+/* Timer pulse animation */
+@keyframes tpulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Streak float animation */
+@keyframes tfloat {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-3px); }
+}
+
+/* Loading spinner */
+@keyframes tspin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Ambient orb drift */
+@keyframes drift1 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-5%, 8%); }
+}
+
+@keyframes drift2 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(6%, -4%); }
+}
+
+@keyframes drift3 {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-3%, -6%); }
+}
+
+/* Theme: Ash */
+body.ash {
+  background: #1a1a2e;
+}
+body.ash .glass-card {
+  background: rgba(50,50,70,0.6) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Theme: Light */
+body.light {
+  background: #f0f1f5;
+}
+body.light .glass-card {
+  background: rgba(255,255,255,0.85) !important;
+  border-color: rgba(0,0,0,0.08) !important;
+}
+
+/* Button active states */
+button:active {
+  transform: scale(0.97);
+  transition: transform 0.1s ease;
+}
+button:disabled:active {
+  transform: none;
+}
+
+/* Date input styling */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+  cursor: pointer;
+}
+
+/* Number input spinner removal */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Summary list style reset */
+details > summary {
+  list-style: none;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
