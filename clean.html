@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lumiq DB Cleanup</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0c14; color: #e2e8f0; font-family: system-ui, sans-serif; padding: 24px; }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; color: #fff; }
+  .sub { color: #64748b; font-size: 13px; margin-bottom: 24px; }
+  .card { background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .course-name { font-weight: 600; font-size: 15px; color: #f1f5f9; }
+  .count { font-size: 12px; color: #64748b; margin-top: 2px; }
+  .badge-ok { display: inline-block; background: #14532d; color: #86efac; font-size: 11px; padding: 2px 8px; border-radius: 20px; margin-left: 8px; }
+  .badge-bad { display: inline-block; background: #7f1d1d; color: #fca5a5; font-size: 11px; padding: 2px 8px; border-radius: 20px; margin-left: 8px; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+  select { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; padding: 6px 10px; border-radius: 8px; font-size: 13px; flex: 1; min-width: 200px; }
+  button { padding: 7px 14px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-rename { background: #3b82f6; color: #fff; }
+  .btn-rename:hover { background: #2563eb; }
+  .btn-delete { background: #ef4444; color: #fff; }
+  .btn-delete:hover { background: #dc2626; }
+  .btn-delete:disabled, .btn-rename:disabled { opacity: 0.4; cursor: not-allowed; }
+  #log { background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 16px; font-size: 12px; font-family: monospace; color: #94a3b8; min-height: 60px; margin-top: 24px; white-space: pre-wrap; }
+  #scan-btn { background: #7c3aed; color: #fff; padding: 10px 24px; font-size: 14px; border-radius: 10px; border: none; cursor: pointer; font-weight: 700; margin-bottom: 24px; }
+  #scan-btn:hover { background: #6d28d9; }
+  #scan-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .section-title { font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+  .ok-section { opacity: 0.5; }
+</style>
+</head>
+<body>
+<h1>🧹 Lumiq DB Cleanup</h1>
+<p class="sub">Scans Firebase for non-standard subject names and fixes them.</p>
+
+<button id="scan-btn" onclick="scan()">Scan Database</button>
+
+<div id="results"></div>
+<div id="log">Waiting to scan...</div>
+
+<script>
+firebase.initializeApp({
+  apiKey: "AIzaSyDMBe6KhptLj_B6mvN5kceI6wPpflWibhY",
+  authDomain: "exam-pro-cbt.firebaseapp.com",
+  databaseURL: "https://exam-pro-cbt-default-rtdb.firebaseio.com",
+  projectId: "exam-pro-cbt",
+  storageBucket: "exam-pro-cbt.firebasestorage.app",
+  messagingSenderId: "633837081524",
+  appId: "1:633837081524:web:66768df969657b128c98e1"
+});
+const db = firebase.database();
+
+const OFFICIAL = [
+  "Principles of Economics",
+  "Introduction to Business",
+  "Citizenship Education",
+  "Psychology",
+  "Principles of Accounting",
+  "Principles of Law",
+  "Computer",
+  "English",
+  "Business Mathematics",
+  "Fundamental of Marketing",
+  "Financial Accounting",
+  "communication skills"
+];
+
+let allQuestions = {};
+let subjectMap = {};
+
+function log(msg) {
+  document.getElementById('log').textContent += '\n' + msg;
+}
+
+async function scan() {
+  const btn = document.getElementById('scan-btn');
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+  document.getElementById('log').textContent = 'Authenticating...';
+  document.getElementById('results').innerHTML = '';
+
+  try {
+    await firebase.auth().signInAnonymously();
+    log('Auth OK. Loading questions...');
+
+    const snap = await db.ref('questions').once('value');
+    allQuestions = {};
+    subjectMap = {};
+
+    snap.forEach(child => {
+      const d = child.val();
+      const subj = d.subject || 'UNKNOWN';
+      if (!subjectMap[subj]) subjectMap[subj] = [];
+      subjectMap[subj].push(child.key);
+      allQuestions[child.key] = d;
+    });
+
+    log(`Found ${Object.keys(allQuestions).length} total questions across ${Object.keys(subjectMap).length} subjects.`);
+    renderResults();
+  } catch(e) {
+    log('Error: ' + e.message);
+  }
+
+  btn.textContent = 'Re-scan';
+  btn.disabled = false;
+}
+
+function renderResults() {
+  const container = document.getElementById('results');
+  const bad = [], ok = [];
+
+  for (const [name, keys] of Object.entries(subjectMap)) {
+    const isOk = OFFICIAL.includes(name);
+    (isOk ? ok : bad).push({ name, keys });
+  }
+
+  let html = '';
+
+  if (bad.length === 0) {
+    html += '<div class="card" style="border-color:#14532d;color:#86efac;font-weight:600">✅ All subjects match the official list. Nothing to fix.</div>';
+  } else {
+    html += `<div class="section-title">⚠️ Non-standard subjects (${bad.length}) — needs fixing</div>`;
+    for (const { name, keys } of bad) {
+      const opts = OFFICIAL.map(c => `<option value="${c}">${c}</option>`).join('');
+      html += `
+        <div class="card" id="card-${btoa(name).replace(/=/g,'')}">
+          <div class="course-name">${name} <span class="badge-bad">NOT OFFICIAL</span></div>
+          <div class="count">${keys.length} question${keys.length !== 1 ? 's' : ''}</div>
+          <div class="actions">
+            <select id="sel-${btoa(name).replace(/=/g,'')}">
+              <option value="">-- Rename to... --</option>
+              ${opts}
+            </select>
+            <button class="btn-rename" onclick="rename('${name}')">Rename All</button>
+            <button class="btn-delete" onclick="deleteSubject('${name}')">Delete All</button>
+          </div>
+        </div>`;
+    }
+  }
+
+  if (ok.length > 0) {
+    html += `<div class="section-title ok-section" style="margin-top:24px">✅ Official subjects (${ok.length})</div>`;
+    for (const { name, keys } of ok) {
+      html += `
+        <div class="card ok-section">
+          <div class="course-name">${name} <span class="badge-ok">OFFICIAL</span></div>
+          <div class="count">${keys.length} question${keys.length !== 1 ? 's' : ''}</div>
+        </div>`;
+    }
+  }
+
+  container.innerHTML = html;
+}
+
+async function rename(fromName) {
+  const id = btoa(fromName).replace(/=/g, '');
+  const sel = document.getElementById('sel-' + id);
+  const toName = sel.value;
+  if (!toName) { alert('Select a target course name first.'); return; }
+  if (!confirm(`Rename all ${subjectMap[fromName].length} questions from "${fromName}" → "${toName}"?`)) return;
+
+  log(`Renaming "${fromName}" → "${toName}"...`);
+  const keys = subjectMap[fromName];
+  let done = 0;
+  for (const key of keys) {
+    await db.ref('questions/' + key + '/subject').set(toName);
+    done++;
+  }
+  log(`✅ Done. Renamed ${done} questions.`);
+  await scan();
+}
+
+async function deleteSubject(name) {
+  const keys = subjectMap[name];
+  if (!confirm(`DELETE all ${keys.length} questions under "${name}"? This cannot be undone.`)) return;
+
+  log(`Deleting ${keys.length} questions under "${name}"...`);
+  for (const key of keys) {
+    await db.ref('questions/' + key).remove();
+  }
+  log(`✅ Deleted ${keys.length} questions.`);
+  await scan();
+}
+</script>
+</body>
+</html>
