@@ -55,7 +55,8 @@
             q: d.q,
             options: d.options || [],
             answer: d.answer || 0,
-            explanation: d.explanation || ''
+            explanation: d.explanation || '',
+            topic: d.topic || ''
           });
         });
 
@@ -92,6 +93,17 @@
 
         // Also store raw Firebase questions for live refresh after React mounts
         window.__LUMIQ_FB_QUESTIONS__ = bySubject;
+
+        // Build topics map per subject
+        var topicsMap = {};
+        snap.forEach(function(child) {
+          var d = child.val();
+          var subj = d.subject; var topic = (d.topic || '').trim();
+          if (!subj || !topic) return;
+          if (!topicsMap[subj]) topicsMap[subj] = [];
+          if (!topicsMap[subj].includes(topic)) topicsMap[subj].push(topic);
+        });
+        window.__LUMIQ_FB_TOPICS__ = topicsMap;
 
         // Remove loader and let React boot
         var el = document.getElementById('lumiq-fb-loader');
@@ -140,5 +152,255 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
   </head>
   <body>
     <div id="root"></div>
+
+  <!-- ═══ TOPIC FILTER INJECTION ═══ -->
+  <style>
+    #lumiq-topic-overlay{position:fixed;inset:0;z-index:99999;background:rgba(4,6,15,0.92);backdrop-filter:blur(12px);display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.25s}
+    #lumiq-topic-overlay.active{opacity:1;pointer-events:all}
+    #lumiq-topic-sheet{background:#0f1623;border-radius:24px 24px 0 0;border:1px solid rgba(255,255,255,0.08);border-bottom:none;padding:24px 20px 36px;width:100%;max-width:480px;max-height:80vh;overflow-y:auto;transform:translateY(40px);transition:transform 0.25s}
+    #lumiq-topic-overlay.active #lumiq-topic-sheet{transform:translateY(0)}
+    .ltopic-title{font-size:15px;font-weight:700;color:#fff;margin-bottom:4px}
+    .ltopic-sub{font-size:12px;color:rgba(255,255,255,0.4);margin-bottom:18px}
+    .ltopic-grid{display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
+    .ltopic-chip{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);cursor:pointer;transition:all 0.15s;user-select:none}
+    .ltopic-chip.selected{border-color:rgba(139,92,246,0.7);background:rgba(139,92,246,0.12)}
+    .ltopic-chip-check{width:18px;height:18px;border-radius:5px;border:1.5px solid rgba(255,255,255,0.25);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;transition:all 0.15s}
+    .ltopic-chip.selected .ltopic-chip-check{background:#8b5cf6;border-color:#8b5cf6;color:#fff}
+    .ltopic-chip-label{font-size:13px;font-weight:600;color:#e2e8f0}
+    .ltopic-chip-count{font-size:11px;color:rgba(255,255,255,0.35);margin-left:auto}
+    .ltopic-btn-row{display:flex;gap:10px}
+    .ltopic-btn{flex:1;padding:13px;border-radius:14px;border:none;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.15s}
+    .ltopic-btn-cancel{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6)}
+    .ltopic-btn-go{background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff}
+    .ltopic-btn-go:disabled{opacity:0.35;cursor:not-allowed}
+    .ltopic-all-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:12px;border:1px dashed rgba(255,255,255,0.15);background:rgba(255,255,255,0.02);cursor:pointer;margin-bottom:12px;user-select:none}
+    .ltopic-all-row span{font-size:12px;font-weight:600;color:rgba(255,255,255,0.5)}
+  </style>
+
+  <div id="lumiq-topic-overlay">
+    <div id="lumiq-topic-sheet">
+      <div class="ltopic-title">📌 Filter by Topic</div>
+      <div class="ltopic-sub">Select one or more topics — only those questions will appear.</div>
+      <div class="ltopic-all-row" id="ltopic-all-row" onclick="lumiqTopicToggleAll()">
+        <div class="ltopic-chip-check" id="ltopic-all-check">✓</div>
+        <span>All Topics (no filter)</span>
+      </div>
+      <div class="ltopic-grid" id="ltopic-grid"></div>
+      <div class="ltopic-btn-row">
+        <button class="ltopic-btn ltopic-btn-cancel" onclick="lumiqTopicCancel()">Cancel</button>
+        <button class="ltopic-btn ltopic-btn-go" id="ltopic-go-btn" onclick="lumiqTopicConfirm()">Start →</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    var _pendingClick = null;
+    var _selectedTopics = [];
+    var _useAll = true;
+    var _currentSubject = null;
+
+    function getTopics(subject){
+      var t = window.__LUMIQ_FB_TOPICS__ || {};
+      return t[subject] || [];
+    }
+
+    function getQuestionsForSubject(subject){
+      var q = window.__LUMIQ_FB_QUESTIONS__ || {};
+      return q[subject] || [];
+    }
+
+    function getCurrentSubject(){
+      // Read from localStorage courses + React state via DOM
+      try {
+        var courses = JSON.parse(localStorage.getItem('lumiq_courses') || '[]');
+        // Find subject by matching question count shown in heading or page title
+        // More reliable: look at the back button area or heading text in DOM
+        var h = document.querySelector('h1,h2,[class*="font-bold"]');
+        if(!h) return null;
+        // Try to match heading text to a course subject
+        var headingText = h.innerText || '';
+        for(var i=0;i<courses.length;i++){
+          if(headingText.includes(courses[i].subject)) return courses[i].subject;
+        }
+        // Fallback: find first course whose name appears anywhere in page
+        var pageText = document.body.innerText;
+        for(var j=0;j<courses.length;j++){
+          if(pageText.includes(courses[j].subject)) return courses[j].subject;
+        }
+      } catch(e){}
+      return null;
+    }
+
+    function openTopicModal(originalBtn, subject){
+      _pendingClick = originalBtn;
+      _currentSubject = subject;
+      _selectedTopics = [];
+      _useAll = true;
+
+      var topics = getTopics(subject);
+      var allQuestions = getQuestionsForSubject(subject);
+
+      var grid = document.getElementById('ltopic-grid');
+      var allRow = document.getElementById('ltopic-all-row');
+      var allCheck = document.getElementById('ltopic-all-check');
+
+      // Count per topic
+      var countMap = {};
+      allQuestions.forEach(function(q){ var t=q.topic||''; if(t){ countMap[t]=(countMap[t]||0)+1; } });
+
+      grid.innerHTML = '';
+      if(topics.length === 0){
+        // No topics defined — just proceed directly
+        lumiqApplyFilter(subject, [], true);
+        doClick(originalBtn);
+        return;
+      }
+
+      topics.forEach(function(topic){
+        var chip = document.createElement('div');
+        chip.className = 'ltopic-chip';
+        chip.dataset.topic = topic;
+        chip.innerHTML = '<div class="ltopic-chip-check"></div>'
+          + '<span class="ltopic-chip-label">'+topic+'</span>'
+          + '<span class="ltopic-chip-count">'+(countMap[topic]||0)+' Qs</span>';
+        chip.addEventListener('click', function(){
+          _useAll = false;
+          allCheck.style.background=''; allCheck.style.borderColor=''; allCheck.textContent='✓'; allCheck.style.color='rgba(255,255,255,0.3)';
+          chip.classList.toggle('selected');
+          var check = chip.querySelector('.ltopic-chip-check');
+          if(chip.classList.contains('selected')){
+            check.textContent='✓'; check.style.background='#8b5cf6'; check.style.borderColor='#8b5cf6'; check.style.color='#fff';
+            if(!_selectedTopics.includes(topic)) _selectedTopics.push(topic);
+          } else {
+            check.textContent=''; check.style.background=''; check.style.borderColor=''; check.style.color='';
+            _selectedTopics = _selectedTopics.filter(function(t){return t!==topic;});
+          }
+          updateGoBtn();
+        });
+        grid.appendChild(chip);
+      });
+
+      updateGoBtn();
+      document.getElementById('lumiq-topic-overlay').classList.add('active');
+    }
+
+    function updateGoBtn(){
+      var btn = document.getElementById('ltopic-go-btn');
+      btn.disabled = !_useAll && _selectedTopics.length === 0;
+      if(_useAll) btn.textContent = 'Start (All Topics) →';
+      else btn.textContent = 'Start ('+_selectedTopics.length+' topic'+(_selectedTopics.length!==1?'s':'')+') →';
+    }
+
+    window.lumiqTopicToggleAll = function(){
+      _useAll = true;
+      _selectedTopics = [];
+      var allCheck = document.getElementById('ltopic-all-check');
+      allCheck.style.background='#8b5cf6'; allCheck.style.borderColor='#8b5cf6'; allCheck.style.color='#fff';
+      document.querySelectorAll('.ltopic-chip').forEach(function(c){
+        c.classList.remove('selected');
+        var ch=c.querySelector('.ltopic-chip-check');
+        ch.textContent=''; ch.style.background=''; ch.style.borderColor=''; ch.style.color='';
+      });
+      updateGoBtn();
+    };
+
+    window.lumiqTopicCancel = function(){
+      document.getElementById('lumiq-topic-overlay').classList.remove('active');
+      _pendingClick = null;
+    };
+
+    window.lumiqTopicConfirm = function(){
+      if(!_pendingClick || !_currentSubject) return;
+      lumiqApplyFilter(_currentSubject, _selectedTopics, _useAll);
+      document.getElementById('lumiq-topic-overlay').classList.remove('active');
+      doClick(_pendingClick);
+      _pendingClick = null;
+    };
+
+    function lumiqApplyFilter(subject, topics, useAll){
+      try {
+        var courses = JSON.parse(localStorage.getItem('lumiq_courses') || '[]');
+        var allQ = getQuestionsForSubject(subject);
+        var filtered = useAll ? allQ : allQ.filter(function(q){ return topics.includes(q.topic||''); });
+        if(filtered.length === 0) filtered = allQ; // fallback to all if filter gives 0
+        var patched = courses.map(function(c){
+          if(c.subject === subject) return Object.assign({}, c, {questions: filtered});
+          return c;
+        });
+        localStorage.setItem('lumiq_courses', JSON.stringify(patched));
+        // Store filter so we can restore after exam
+        window.__LUMIQ_TOPIC_FILTER__ = {subject:subject, topics:topics, useAll:useAll};
+      } catch(e){ console.warn('Topic filter failed:', e); }
+    }
+
+    function doClick(btn){
+      // Small delay so modal closes first
+      setTimeout(function(){ btn.click(); }, 80);
+    }
+
+    function restoreFullQuestions(){
+      // After exam, restore all questions so subject detail page shows correct count
+      try {
+        var f = window.__LUMIQ_TOPIC_FILTER__;
+        if(!f) return;
+        var courses = JSON.parse(localStorage.getItem('lumiq_courses') || '[]');
+        var allQ = getQuestionsForSubject(f.subject);
+        if(!allQ.length) return;
+        var patched = courses.map(function(c){
+          if(c.subject === f.subject) return Object.assign({}, c, {questions: allQ});
+          return c;
+        });
+        localStorage.setItem('lumiq_courses', JSON.stringify(patched));
+        window.__LUMIQ_TOPIC_FILTER__ = null;
+      } catch(e){}
+    }
+
+    // MutationObserver: intercept mode button clicks
+    var _intercepted = false;
+    var _lastPage = '';
+
+    function interceptModeButtons(){
+      // Find buttons with Exam Mode / Practice text
+      var btns = document.querySelectorAll('button');
+      btns.forEach(function(btn){
+        if(btn.__lumiq_topic_intercepted) return;
+        var txt = btn.innerText || '';
+        if(txt.includes('Exam Mode') || txt.includes('Practice')){
+          btn.__lumiq_topic_intercepted = true;
+          btn.addEventListener('click', function(e){
+            var subject = getCurrentSubject();
+            var topics = subject ? getTopics(subject) : [];
+            if(subject && topics.length > 0){
+              e.stopImmediatePropagation();
+              e.preventDefault();
+              openTopicModal(btn, subject);
+            }
+            // If no topics defined, let click through normally
+          }, true); // capture phase so we run before React
+        }
+      });
+    }
+
+    // Watch DOM for page changes
+    var obs = new MutationObserver(function(){
+      interceptModeButtons();
+      // Detect navigation back to subject page — restore full questions
+      var pageText = document.body.innerText || '';
+      if(pageText.includes('Choose Mode') && _lastPage !== 'subject'){
+        _lastPage = 'subject';
+        restoreFullQuestions();
+        _intercepted = false;
+      } else if(!pageText.includes('Choose Mode')){
+        _lastPage = '';
+      }
+    });
+
+    document.addEventListener('DOMContentLoaded', function(){
+      obs.observe(document.body, {childList:true, subtree:true});
+    });
+  })();
+  </script>
+
   </body>
 </html>
