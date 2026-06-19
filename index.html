@@ -136,18 +136,31 @@
 
       var patched;
       if (saved.length > 0) {
-        // Existing saved courses — patch in fresh Firebase questions.
-        patched = saved.map(function(course) {
-          var fbQ = bySubject[course.subject];
-          return fbQ && fbQ.length > 0 ? Object.assign({}, course, { questions: fbQ }) : course;
-        });
+        // Existing saved courses — patch in fresh Firebase questions, and
+        // DROP any course that's no longer in Firebase's departments node
+        // (i.e. deleted in admin) so deletions actually take effect instead
+        // of leaving a stale cached copy forever. Courses the student
+        // created themselves in-app (isCustom) are never Firebase-sourced,
+        // so they're always kept regardless of what's in Firebase.
+        var fbSubjectNames = {};
+        fbDeptCourses.forEach(function(c){ fbSubjectNames[c.subject] = true; });
+
+        patched = saved
+          .filter(function(course) {
+            if (course.isCustom) return true;
+            return !!fbSubjectNames[course.subject];
+          })
+          .map(function(course) {
+            var fbQ = bySubject[course.subject];
+            return Object.assign({}, course, { questions: fbQ || [] });
+          });
       } else if (fbDeptCourses.length > 0) {
         // No saved courses (new user OR cache was cleared) — use live Firebase course list.
         patched = fbDeptCourses;
       }
       // If nothing in Firebase yet AND no saved courses, leave localStorage alone (Bj defaults show)
 
-      if (patched && patched.length > 0) {
+      if (patched !== undefined) {
         localStorage.setItem('lumiq_courses', JSON.stringify(patched));
         // Push straight into React state if it's already mounted, live —
         // this is what makes admin edits show up without a refresh.
