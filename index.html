@@ -9,9 +9,10 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script>
-  // ══ LUMIQ FIREBASE BOOTSTRAP ══
-  // Waits for DOM then fetches questions + departments from Firebase.
-  // Stores results in localStorage so React reads live data on mount.
+  // ══ LUMIQ FIREBASE BOOTSTRAP (LIVE SYNC) ══
+  // Waits for DOM then subscribes to LIVE Firebase updates for questions +
+  // departments, so changes made in the admin panel show up here without
+  // needing a manual page refresh. Falls back gracefully if Firebase fails.
   (function(){
     var FIREBASE_CONFIG = {
       apiKey:"AIzaSyDMBe6KhptLj_B6mvN5kceI6wPpflWibhY",
@@ -31,9 +32,138 @@
       "Computer":"💻","English":"📖","Business Mathematics":"🔢"
     };
 
+    var _firstLoad = true;
+
     function removeLoader() {
       var el = document.getElementById('lumiq-fb-loader');
       if (el) el.remove();
+    }
+
+    function showLoader() {
+      if (document.getElementById('lumiq-fb-loader')) return;
+      var overlay = document.createElement('div');
+      overlay.id = 'lumiq-fb-loader';
+      overlay.style.cssText = 'position:fixed;inset:0;background:#04060f;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px';
+      overlay.innerHTML = '<div style="font-size:40px;animation:spin 1s linear infinite">🎯</div>'
+        + '<div style="font-size:14px;font-weight:700;color:rgba(255,255,255,0.6);letter-spacing:0.05em">Loading your courses...</div>'
+        + '<style>@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>';
+      document.body.appendChild(overlay);
+    }
+
+    function finishFirstLoad(safetyTimer) {
+      if (!_firstLoad) return;
+      _firstLoad = false;
+      clearTimeout(safetyTimer);
+      window.__LUMIQ_LOADING__ = false;
+      removeLoader();
+    }
+
+    // Don't let a background live-update yank the question set out from
+    // under a student mid exam/practice session — the topic-filter script
+    // keeps this flag current based on what's on screen.
+    function sessionActive() {
+      return !!window.__LUMIQ_EXAM_ACTIVE__;
+    }
+
+    function processSnapshots(qSnap, deptSnap) {
+      // ── 1. Group questions by subject ──
+      var bySubject = {};
+      qSnap.forEach(function(child) {
+        var d = child.val();
+        var subj = d.subject;
+        if (!subj) return;
+        if (!bySubject[subj]) bySubject[subj] = [];
+        bySubject[subj].push({
+          q: d.q,
+          options: d.options || [],
+          answer: d.answer || 0,
+          explanation: d.explanation || '',
+          topic: d.topic || ''
+        });
+      });
+
+      // ── 2. Build course list from Firebase departments node ──
+      //    This means whatever is in admin → shows in CBT, no hardcoding needed
+      var fbDeptCourses = [];
+      deptSnap.forEach(function(deptChild) {
+        deptChild.child('courses').forEach(function(courseChild) {
+          var c = courseChild.val();
+          var name = c.name || courseChild.key;
+          fbDeptCourses.push({
+            id: 'fb_' + courseChild.key,
+            subject: name,
+            icon: c.icon || ICONS[name] || '📚',
+            questions: bySubject[name] || []
+          });
+        });
+      });
+
+      // Always refresh these caches, even if we skip touching the active
+      // course list below (e.g. mid-exam) — the topic filter etc still
+      // benefit from having the freshest data ready for the next view.
+      window.__LUMIQ_FB_QUESTIONS__ = bySubject;
+
+      // Build topics map
+      var topicsMap = {};
+      qSnap.forEach(function(child) {
+        var d = child.val();
+        var subj = d.subject; var topic = (d.topic || '').trim();
+        if (!subj || !topic) return;
+        if (!topicsMap[subj]) topicsMap[subj] = [];
+        if (!topicsMap[subj].includes(topic)) topicsMap[subj].push(topic);
+      });
+      window.__LUMIQ_FB_TOPICS__ = topicsMap;
+
+      // Store dept→courses map so school setup wizard can use Firebase data
+      var fbDepts = {};
+      deptSnap.forEach(function(deptChild) {
+        var deptName = deptChild.val().name || deptChild.key;
+        var courseNames = [];
+        deptChild.child('courses').forEach(function(courseChild) {
+          var cname = courseChild.val().name || courseChild.key;
+          courseNames.push(cname);
+        });
+        if (courseNames.length > 0) fbDepts[deptName] = courseNames;
+      });
+      // Expose so AE gets overridden at runtime with live Firebase data
+      window.__LUMIQ_FB_DEPTS__ = fbDepts;
+
+      if (sessionActive()) return;
+
+      // ── 3. Decide what to put in localStorage ──
+      var saved = [];
+      try { saved = JSON.parse(localStorage.getItem('lumiq_courses') || '[]'); } catch(e){}
+
+      var patched;
+      if (saved.length > 0) {
+        // Existing saved courses — patch in fresh Firebase questions.
+        patched = saved.map(function(course) {
+          var fbQ = bySubject[course.subject];
+          return fbQ && fbQ.length > 0 ? Object.assign({}, course, { questions: fbQ }) : course;
+        });
+      } else if (fbDeptCourses.length > 0) {
+        // No saved courses (new user OR cache was cleared) — use live Firebase course list.
+        patched = fbDeptCourses;
+      }
+      // If nothing in Firebase yet AND no saved courses, leave localStorage alone (Bj defaults show)
+
+      if (patched && patched.length > 0) {
+        localStorage.setItem('lumiq_courses', JSON.stringify(patched));
+        // Push straight into React state if it's already mounted, live —
+        // this is what makes admin edits show up without a refresh.
+        if (typeof window.__lumiq_dispatch === 'function') {
+          window.__lumiq_dispatch({type: 'SET_COURSES', courses: patched});
+        } else {
+          // React not mounted yet — store for AppProvider to pick up
+          window.__LUMIQ_PATCHED_COURSES = patched;
+        }
+      }
+
+      // Freshly rendered buttons (new question counts etc.) need the topic
+      // popup hooked up again.
+      if (typeof window.__lumiq_interceptModeButtons === 'function') {
+        window.__lumiq_interceptModeButtons();
+      }
     }
 
     function run() {
@@ -45,17 +175,10 @@
       var db;
       try { db = firebase.database(); } catch(e) { return; }
 
-      // Show spinner overlay (document.body is now available)
-      var overlay = document.createElement('div');
-      overlay.id = 'lumiq-fb-loader';
-      overlay.style.cssText = 'position:fixed;inset:0;background:#04060f;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px';
-      overlay.innerHTML = '<div style="font-size:40px;animation:spin 1s linear infinite">🎯</div>'
-        + '<div style="font-size:14px;font-weight:700;color:rgba(255,255,255,0.6);letter-spacing:0.05em">Loading your courses...</div>'
-        + '<style>@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>';
-      document.body.appendChild(overlay);
+      showLoader();
 
       // Safety net: always remove loader after 6s so app never stays black
-      var safetyTimer = setTimeout(function(){ window.__LUMIQ_LOADING__=false; removeLoader(); }, 6000);
+      var safetyTimer = setTimeout(function(){ finishFirstLoad(safetyTimer); }, 6000);
 
       // ── Authenticate first (anonymous) — required if Firebase rules say auth!=null ──
       var authReady;
@@ -66,120 +189,29 @@
       }
 
       authReady.then(function(){
-      // ── Load BOTH questions AND departments so courses always show ──
-      Promise.all([
-        db.ref('questions').once('value'),
-        db.ref('departments').once('value')
-      ]).then(function(results) {
-        var qSnap   = results[0];
-        var deptSnap = results[1];
+        var latestQSnap = null, latestDeptSnap = null;
 
-        // ── 1. Group questions by subject ──
-        var bySubject = {};
-        qSnap.forEach(function(child) {
-          var d = child.val();
-          var subj = d.subject;
-          if (!subj) return;
-          if (!bySubject[subj]) bySubject[subj] = [];
-          bySubject[subj].push({
-            q: d.q,
-            options: d.options || [],
-            answer: d.answer || 0,
-            explanation: d.explanation || '',
-            topic: d.topic || ''
-          });
-        });
-
-        // ── 2. Build course list from Firebase departments node ──
-        //    This means whatever is in admin → shows in CBT, no hardcoding needed
-        var fbDeptCourses = [];
-        deptSnap.forEach(function(deptChild) {
-          deptChild.child('courses').forEach(function(courseChild) {
-            var c = courseChild.val();
-            var name = c.name || courseChild.key;
-            fbDeptCourses.push({
-              id: 'fb_' + courseChild.key,
-              subject: name,
-              icon: c.icon || ICONS[name] || '📚',
-              questions: bySubject[name] || []
-            });
-          });
-        });
-
-        // ── 3. Decide what to put in localStorage ──
-        var saved = [];
-        try { saved = JSON.parse(localStorage.getItem('lumiq_courses') || '[]'); } catch(e){}
-
-        // Check if user has already completed setup (has their own course selection)
-        // We detect this by checking if lumiq_profile has a name set
-        var profile = {};
-        try { profile = JSON.parse(localStorage.getItem('lumiq_profile') || '{}'); } catch(e){}
-        var userHasSetUp = !!(profile.name && profile.name.trim());
-
-        var patched;
-        if (saved.length > 0) {
-          // Existing saved courses — patch in fresh Firebase questions.
-          patched = saved.map(function(course) {
-            var fbQ = bySubject[course.subject];
-            return fbQ && fbQ.length > 0 ? Object.assign({}, course, { questions: fbQ }) : course;
-          });
-        } else if (fbDeptCourses.length > 0) {
-          // No saved courses (new user OR cache was cleared) — use live Firebase course list.
-          patched = fbDeptCourses;
-        }
-        // If nothing in Firebase yet AND no saved courses, leave localStorage alone (Bj defaults show)
-
-        if (patched && patched.length > 0) {
-          localStorage.setItem('lumiq_courses', JSON.stringify(patched));
-          // Try immediate dispatch if React already mounted
-          if (typeof window.__lumiq_dispatch === 'function') {
-            window.__lumiq_dispatch({type: 'SET_COURSES', courses: patched});
-          } else {
-            // React not mounted yet — store for AppProvider to pick up
-            window.__LUMIQ_PATCHED_COURSES = patched;
-          }
+        function maybeProcess() {
+          if (!latestQSnap || !latestDeptSnap) return;
+          try {
+            processSnapshots(latestQSnap, latestDeptSnap);
+          } catch(e) { console.warn('Lumiq live sync failed:', e); }
+          finishFirstLoad(safetyTimer);
         }
 
-        // Store for live refresh after React mounts
-        window.__LUMIQ_FB_QUESTIONS__ = bySubject;
+        // ── LIVE listeners on both refs — fire immediately with current
+        // data, then fire again automatically whenever admin adds/edits a
+        // question, course, or department. No more "refresh to see it". ──
+        db.ref('questions').on('value', function(snap){
+          latestQSnap = snap;
+          maybeProcess();
+        }, function(){ finishFirstLoad(safetyTimer); });
 
-        // Build topics map
-        var topicsMap = {};
-        qSnap.forEach(function(child) {
-          var d = child.val();
-          var subj = d.subject; var topic = (d.topic || '').trim();
-          if (!subj || !topic) return;
-          if (!topicsMap[subj]) topicsMap[subj] = [];
-          if (!topicsMap[subj].includes(topic)) topicsMap[subj].push(topic);
-        });
-        window.__LUMIQ_FB_TOPICS__ = topicsMap;
-
-        // Store dept→courses map so school setup wizard can use Firebase data
-        var fbDepts = {};
-        deptSnap.forEach(function(deptChild) {
-          var deptName = deptChild.val().name || deptChild.key;
-          var courseNames = [];
-          deptChild.child('courses').forEach(function(courseChild) {
-            var cname = courseChild.val().name || courseChild.key;
-            courseNames.push(cname);
-          });
-          if (courseNames.length > 0) fbDepts[deptName] = courseNames;
-        });
-        // Expose so AE gets overridden at runtime with live Firebase data
-        window.__LUMIQ_FB_DEPTS__ = fbDepts;
-
-        // Done — remove loader and let React read localStorage
-        clearTimeout(safetyTimer);
-        window.__LUMIQ_LOADING__ = false;
-        removeLoader();
-
-      }).catch(function() {
-        // Firebase failed — boot with whatever is cached
-        clearTimeout(safetyTimer);
-        window.__LUMIQ_LOADING__ = false;
-        removeLoader();
+        db.ref('departments').on('value', function(snap){
+          latestDeptSnap = snap;
+          maybeProcess();
+        }, function(){ finishFirstLoad(safetyTimer); });
       });
-      }); // end authReady.then
     }
 
     // Wait for DOM before running (fixes document.body null in <head>)
@@ -298,20 +330,47 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
       return q[subject] || [];
     }
 
+    // ── Reliable current-subject tracking ──
+    // Wrap the app's own dispatch function so we know exactly which subject
+    // is selected, instead of guessing from on-screen text (which used to
+    // misfire whenever one course's name was a substring of another, e.g.
+    // "Economics" inside "Principles of Economics" — that's what made the
+    // topic popup feel inconsistent).
+    function wrapDispatchOnce(){
+      if (window.__lumiq_dispatch_wrapped) return true;
+      if (typeof window.__lumiq_dispatch !== 'function') return false;
+      var orig = window.__lumiq_dispatch;
+      window.__lumiq_dispatch = function(action){
+        try {
+          if (action && action.type === 'SET_CURRENT_SUBJECT') {
+            var courses = [];
+            try { courses = JSON.parse(localStorage.getItem('lumiq_courses') || '[]'); } catch(e){}
+            var course = courses[action.index];
+            window.__LUMIQ_CURRENT_SUBJECT__ = course ? course.subject : null;
+          }
+        } catch(e){}
+        return orig(action);
+      };
+      window.__lumiq_dispatch_wrapped = true;
+      return true;
+    }
+    var _wrapTimer = setInterval(function(){
+      if (wrapDispatchOnce()) clearInterval(_wrapTimer);
+    }, 150);
+
     function getCurrentSubject(){
-      // Read from localStorage courses + React state via DOM
+      // Prefer the subject we tracked directly from the app's dispatch.
+      if (window.__LUMIQ_CURRENT_SUBJECT__) return window.__LUMIQ_CURRENT_SUBJECT__;
+      // Fallback (only used in the brief window before the dispatch wrap
+      // attaches): old heuristic of reading it off the page.
       try {
         var courses = JSON.parse(localStorage.getItem('lumiq_courses') || '[]');
-        // Find subject by matching question count shown in heading or page title
-        // More reliable: look at the back button area or heading text in DOM
         var h = document.querySelector('h1,h2,[class*="font-bold"]');
         if(!h) return null;
-        // Try to match heading text to a course subject
         var headingText = h.innerText || '';
         for(var i=0;i<courses.length;i++){
           if(headingText.includes(courses[i].subject)) return courses[i].subject;
         }
-        // Fallback: find first course whose name appears anywhere in page
         var pageText = document.body.innerText;
         for(var j=0;j<courses.length;j++){
           if(pageText.includes(courses[j].subject)) return courses[j].subject;
@@ -469,6 +528,16 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
         }
       });
     }
+    // Expose so the Firebase live-sync script can re-run this after it
+    // pushes fresh data into freshly re-rendered buttons.
+    window.__lumiq_interceptModeButtons = interceptModeButtons;
+
+    // Run once immediately (covers the case where the page is already fully
+    // rendered with no further DOM mutations to trigger the observer below —
+    // this was the main reason the topic popup used to show up only
+    // sometimes) and again once the DOM is ready.
+    interceptModeButtons();
+    document.addEventListener('DOMContentLoaded', interceptModeButtons);
 
     // Watch DOM for page changes
     var obs = new MutationObserver(function(){
@@ -482,6 +551,10 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
       } else if(!pageText.includes('Choose Mode')){
         _lastPage = '';
       }
+      // Track whether an exam/practice session is currently on screen, so
+      // the live Firebase sync (bootstrap script) knows not to swap out the
+      // active question set out from under the student mid-session.
+      window.__LUMIQ_EXAM_ACTIVE__ = /Q\d+\/\d+\s*·\s*\d+\s*answered/.test(pageText);
     });
 
     document.addEventListener('DOMContentLoaded', function(){
