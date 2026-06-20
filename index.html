@@ -488,7 +488,15 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
           if(c.subject === subject) return Object.assign({}, c, {questions: filtered});
           return c;
         });
-        localStorage.setItem('lumiq_courses', JSON.stringify(patched));
+        // Push into live React state (this also persists to localStorage —
+        // SET_COURSES writes it). Writing localStorage alone left the
+        // running app's in-memory course list — and therefore the exam it
+        // was about to start — untouched.
+        if(typeof window.__lumiq_dispatch === 'function'){
+          window.__lumiq_dispatch({type:'SET_COURSES', courses: patched});
+        } else {
+          localStorage.setItem('lumiq_courses', JSON.stringify(patched));
+        }
         // Store filter so we can restore after exam
         window.__LUMIQ_TOPIC_FILTER__ = {subject:subject, topics:topics, useAll:useAll};
       } catch(e){ console.warn('Topic filter failed:', e); }
@@ -511,7 +519,11 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
           if(c.subject === f.subject) return Object.assign({}, c, {questions: allQ});
           return c;
         });
-        localStorage.setItem('lumiq_courses', JSON.stringify(patched));
+        if(typeof window.__lumiq_dispatch === 'function'){
+          window.__lumiq_dispatch({type:'SET_COURSES', courses: patched});
+        } else {
+          localStorage.setItem('lumiq_courses', JSON.stringify(patched));
+        }
         window.__LUMIQ_TOPIC_FILTER__ = null;
       } catch(e){}
     }
@@ -519,6 +531,34 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
     // MutationObserver: intercept mode button clicks
     var _intercepted = false;
     var _lastPage = '';
+
+    function getSelectedCount(){
+      // The active "how many questions" button is the one styled with the
+      // 0.15-alpha selected background (vs 0.06 for unselected).
+      var btns = document.querySelectorAll('button');
+      for(var i=0;i<btns.length;i++){
+        var b = btns[i];
+        if(b.className && b.className.indexOf('min-w-[52px]') !== -1){
+          var style = b.getAttribute('style') || '';
+          if(style.indexOf('0.15)') !== -1){
+            var t = (b.innerText||'').split('\n')[0].trim();
+            var n = parseInt(t, 10);
+            return isNaN(n) ? null : n; // null = "All" selected
+          }
+        }
+      }
+      return null;
+    }
+
+    function setExamParams(mode){
+      try{
+        var count = getSelectedCount();
+        var url = new URL(window.location.href);
+        if(count){ url.searchParams.set('count', count); } else { url.searchParams.delete('count'); }
+        url.searchParams.set('mode', mode);
+        window.history.replaceState(null, '', url);
+      }catch(e){}
+    }
 
     function interceptModeButtons(){
       // Find buttons with Exam Mode / Practice text
@@ -528,11 +568,13 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
         var txt = btn.innerText || '';
         if(txt.includes('Exam Mode') || txt.includes('Practice')){
           btn.__lumiq_topic_intercepted = true;
+          var mode = txt.includes('Exam Mode') ? 'exam' : 'practice';
           btn.addEventListener('click', function(e){
             if(btn.__lumiq_topic_bypass){
               btn.__lumiq_topic_bypass = false;
               return; // this is our own synthetic click after Start — let it through
             }
+            setExamParams(mode);
             var subject = getCurrentSubject();
             var topics = subject ? getTopics(subject) : [];
             if(subject && topics.length > 0){
