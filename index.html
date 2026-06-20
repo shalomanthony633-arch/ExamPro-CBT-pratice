@@ -496,7 +496,7 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
 
     function doClick(btn){
       // Small delay so modal closes first
-      setTimeout(function(){ btn.click(); }, 80);
+      setTimeout(function(){ btn.__lumiq_topic_bypass = true; btn.click(); }, 80);
     }
 
     function restoreFullQuestions(){
@@ -529,6 +529,10 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
         if(txt.includes('Exam Mode') || txt.includes('Practice')){
           btn.__lumiq_topic_intercepted = true;
           btn.addEventListener('click', function(e){
+            if(btn.__lumiq_topic_bypass){
+              btn.__lumiq_topic_bypass = false;
+              return; // this is our own synthetic click after Start — let it through
+            }
             var subject = getCurrentSubject();
             var topics = subject ? getTopics(subject) : [];
             if(subject && topics.length > 0){
