@@ -3371,25 +3371,45 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
   })();
   </script>
   <script>
-  // ══ LUMIQ SECURITY: BLOCK CHECK + DEVTOOLS/RIGHT-CLICK TAMPER LOGGING ══
-  // Writes to analytics/devices/<id>, analytics/devtools, analytics/visits and
-  // honours blocked/<id> — all read by the admin panel's Security tab.
+  // ══ LUMIQ SECURITY v2: BLOCK CHECK + TAMPER LOGGING (mobile-safe) ══
+  // Writes analytics/devices/<id>, analytics/devtools, analytics/visits and
+  // honours blocked/<id> (read by the admin Security tab).
+  // Owner bypass: open the site once with ?owner=lumiqboss2024 to whitelist
+  // this device — it will never be flagged or blocked (for you, the admin).
   (function(){
     var CFG={apiKey:"AIzaSyDMBe6KhptLj_B6mvN5kceI6wPpflWibhY",authDomain:"exam-pro-cbt.firebaseapp.com",databaseURL:"https://exam-pro-cbt-default-rtdb.firebaseio.com",projectId:"exam-pro-cbt",storageBucket:"exam-pro-cbt.firebasestorage.app",messagingSenderId:"633837081524",appId:"1:633837081524:web:66768df969657b128c98e1"};
+    var OWNER_SECRET='lumiqboss2024';
     function devId(){var id=localStorage.getItem('lumiq_device_id');if(!id){id='stu_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);localStorage.setItem('lumiq_device_id',id);}return id;}
-    var ID=devId(), db=null, blocked=false, warned=false;
+
+    // ---- Owner whitelist (so YOU never get locked out while testing) ----
+    try{
+      var qs=new URLSearchParams(location.search);
+      if(qs.get('owner')===OWNER_SECRET){ localStorage.setItem('lumiq_owner','1'); }
+      if(qs.get('owner')==='off'){ localStorage.removeItem('lumiq_owner'); }
+    }catch(e){}
+    var IS_OWNER = (localStorage.getItem('lumiq_owner')==='1');
+
+    // Touch / small screen => mobile. The window-size devtools heuristic gives
+    // false positives on phones (address bar hide/show), so we DISABLE it there.
+    var IS_MOBILE = ('ontouchstart' in window) || (navigator.maxTouchPoints>0) || Math.min(screen.width,screen.height)<=820;
+
+    var ID=devId(), db=null, blocked=false, warned=false, everOpen=false;
 
     function ready(cb){var t=0;(function w(){if(window.firebase&&firebase.database){try{if(!firebase.apps||!firebase.apps.length)firebase.initializeApp(CFG);}catch(e){}try{cb(firebase.database());return;}catch(e){}}if(t++>60)return;setTimeout(w,300);})();}
 
+    function openWA(){ try{ window.open('https://wa.me/2348143895403?text=My%20device%20was%20blocked%20on%20Lumiq','_blank'); }catch(e){ location.href='https://wa.me/2348143895403'; } }
+
     function showBlock(){
-      if(document.getElementById('lumiq-blocked-screen'))return;
+      if(IS_OWNER) return;                       // never block the owner
+      if(document.getElementById('lumiq-blocked-screen')) return;
       var o=document.createElement('div');o.id='lumiq-blocked-screen';
-      o.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#04060f;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+      o.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#04060f;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px;pointer-events:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
       o.innerHTML='<div style="font-size:54px;margin-bottom:16px">\u26D4</div>'
         +'<div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:8px">Access Blocked</div>'
         +'<div style="font-size:13px;color:rgba(255,255,255,0.55);line-height:1.6;max-width:320px">This device has been blocked for violating the terms of use. If you believe this is a mistake, contact support.</div>'
-        +'<a href="https://wa.me/2348143895403?text=My%20device%20was%20blocked%20on%20Lumiq" style="margin-top:20px;padding:12px 22px;border-radius:12px;background:rgba(37,211,102,0.14);border:1px solid rgba(37,211,102,0.4);color:#25d366;font-size:13px;font-weight:700;text-decoration:none">Contact Support</a>';
+        +'<button id="lumiq-block-wa" style="margin-top:20px;padding:13px 24px;border-radius:12px;background:rgba(37,211,102,0.16);border:1px solid rgba(37,211,102,0.45);color:#25d366;font-size:14px;font-weight:800;cursor:pointer;pointer-events:auto">Contact Support</button>';
       document.body.appendChild(o);
+      var b=document.getElementById('lumiq-block-wa'); if(b){ b.onclick=openWA; b.addEventListener('touchend',openWA); }
       try{var r=document.getElementById('root');if(r)r.style.filter='blur(7px)';}catch(e){}
       blocked=true;
     }
@@ -3397,13 +3417,15 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
     function warn(){
       if(warned)return;warned=true;
       var o=document.createElement('div');o.id='lumiq-tamper-warn';
-      o.style.cssText='position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:2147483646;background:rgba(239,68,68,0.96);color:#fff;padding:12px 20px;border-radius:14px;font-size:13px;font-weight:700;font-family:-apple-system,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,0.4);max-width:90%;text-align:center';
-      o.textContent='\u26A0\uFE0F Developer tools and copying are not allowed. This attempt has been logged.';
+      // pointer-events:none => this banner can NEVER intercept taps/clicks.
+      o.style.cssText='position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:2147483646;pointer-events:none;background:rgba(239,68,68,0.96);color:#fff;padding:12px 20px;border-radius:14px;font-size:13px;font-weight:700;font-family:-apple-system,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,0.4);max-width:90%;text-align:center';
+      o.textContent='\u26A0\uFE0F Developer tools / copying are not allowed. This attempt has been logged.';
       document.body.appendChild(o);
       setTimeout(function(){warned=false;if(o&&o.parentNode)o.parentNode.removeChild(o);},4000);
     }
 
     function flag(kind){
+      if(IS_OWNER) return;                       // owner is never flagged
       warn();
       if(!db)return;
       try{
@@ -3420,34 +3442,37 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
         db.ref('analytics/visits').push({deviceId:ID,ts:Date.now(),ua:navigator.userAgent,screen:(screen.width+'x'+screen.height)});
         var dref=db.ref('analytics/devices/'+ID);
         dref.child('visits').transaction(function(v){return (v||0)+1;});
-        dref.update({ua:navigator.userAgent,lastSeen:Date.now(),screen:(screen.width+'x'+screen.height)});
+        dref.update({ua:navigator.userAgent,lastSeen:Date.now(),screen:(screen.width+'x'+screen.height),owner:IS_OWNER?1:0});
       }catch(e){}
-      // Live block: if admin blocks this device, lock immediately (and on next load)
-      try{ db.ref('blocked/'+ID).on('value',function(s){ if(s.val()) showBlock(); }); }catch(e){}
+      // Live block enforcement (skipped for owner)
+      try{ db.ref('blocked/'+ID).on('value',function(s){ if(s.val()&&!IS_OWNER) showBlock(); }); }catch(e){}
     });
 
-    // Keyboard: F12, Ctrl+Shift+I/J/C, Ctrl+U, Cmd+Opt+I/J/C
+    // Keyboard traps (all platforms): F12, Ctrl/Cmd+Shift+I/J/C, Ctrl+U
     document.addEventListener('keydown',function(e){
+      if(IS_OWNER)return;
       var k=e.keyCode||e.which;
       if(k===123){e.preventDefault();flag('F12');}
       else if(e.ctrlKey&&e.shiftKey&&(k===73||k===74||k===67)){e.preventDefault();flag('ctrl-shift');}
       else if(e.ctrlKey&&k===85){e.preventDefault();flag('view-source');}
       else if(e.metaKey&&e.altKey&&(k===73||k===74||k===67)){e.preventDefault();flag('mac-devtools');}
     },true);
-    // Right-click
-    document.addEventListener('contextmenu',function(e){e.preventDefault();flag('right-click');},true);
+    // Right-click / long-press context menu
+    document.addEventListener('contextmenu',function(e){ if(IS_OWNER)return; e.preventDefault(); flag('right-click'); },true);
 
-    // DevTools-open heuristic (docked panel changes window chrome size)
-    var THRESH=170,opened=false;
-    setInterval(function(){
-      if(blocked)return;
-      var dw=window.outerWidth-window.innerWidth, dh=window.outerHeight-window.innerHeight;
-      var isOpen=(dw>THRESH||dh>THRESH);
-      if(isOpen&&!opened){opened=true;flag('devtools-open');}
-      else if(!isOpen){opened=false;}
-    },1500);
+    // DevTools-open size heuristic — DESKTOP ONLY (false-positives on phones)
+    if(!IS_MOBILE && !IS_OWNER){
+      setInterval(function(){
+        if(blocked)return;
+        var dw=window.outerWidth-window.innerWidth, dh=window.outerHeight-window.innerHeight;
+        var isOpen=(dw>200||dh>200);
+        if(isOpen&&!everOpen){everOpen=true;flag('devtools-open');}
+        else if(!isOpen){everOpen=false;}
+      },1500);
+    }
   })();
   </script>
+
 
 </body>
 </html>
