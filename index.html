@@ -290,6 +290,7 @@
   /* Inputs: 16px font stops iOS auto-zoom-on-focus */
   input, textarea, select { font-size: 16px !important; }
   </style>
+<base target="_blank">
 </head>
   <body>
 <script>
@@ -2336,12 +2337,13 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
       try{localStorage.setItem('lumiq_scan_uses',JSON.stringify(u))}catch(e){}
       return u;
     }
+    var TOKENS_PER_SCAN = 25;
     window.__lumiqCanScan = function(){
-      return uses().length < LIMITS[planKey()] || getEnergy() > 0;
+      return uses().length < LIMITS[planKey()] || getEnergy() >= TOKENS_PER_SCAN;
     };
     window.__lumiqRecordScan = function(){
       var u=uses();
-      if (u.length >= LIMITS[planKey()]) { setEnergy(getEnergy()-1); return; }  // spend energy
+      if (u.length >= LIMITS[planKey()]) { setEnergy(getEnergy()-TOKENS_PER_SCAN); return; }  // spend energy
       u.push(Date.now());
       try{localStorage.setItem('lumiq_scan_uses',JSON.stringify(u))}catch(e){}
     };
@@ -2504,7 +2506,7 @@ ${i.correct}/${i.total} correct`;window.open(`https://wa.me/?text=${encodeURICom
       var p = planKey();
       return p==='quarterly'?'Semester':p==='semester'?'Full Year':'Monthly';
     }
-    var TOKENS_PER_SCAN = 34;                 // 100 tokens \u2248 3 scans
+    var TOKENS_PER_SCAN = 25;                 // 100 tokens \u2248 4 scans
     function getEnergy(){ return parseInt(localStorage.getItem('lumiq_energy')||'0',10)||0; }
     function setEnergy(v){ localStorage.setItem('lumiq_energy', String(Math.max(0,v))); }
     function bonusScansLeft(){ return Math.floor(getEnergy() / TOKENS_PER_SCAN); }
